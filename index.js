@@ -23,7 +23,41 @@ async function run() {
     const taskCollection = client.db("taskList").collection("task");
     console.log("DB Connected");
 
-    
+    //*--------------Task---------------*//
+
+    // GET post by email
+    app.get("/task", async (req, res) => {
+      // const filter = req.params.email;
+      const result = await taskCollection.find({}).toArray();
+      res.send(result);
+    });
+
+    // POST task by email
+    app.post("/task", async (req, res) => {
+      const task = req.body;
+      const result = await taskCollection.insertOne(task);
+      res.send(result);
+    });
+
+    // DELETE Task by id
+    app.delete("/task/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: ObjectId(id) };
+      console.log(filter);
+      const result = await taskCollection.deleteOne(filter);
+      res.send(result);
+    });
+
+    app.put("/task/complete/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: ObjectId(id) };
+      const updateDoc = {
+        $set: { status: "complete" },
+      };
+      const result = await taskCollection.updateOne(filter, updateDoc);
+
+      res.send(result);
+    });
   } finally {
   }
 }
