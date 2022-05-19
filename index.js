@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
 var cors = require("cors");
+var jwt = require("jsonwebtoken");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
@@ -17,38 +18,85 @@ const client = new MongoClient(uri, {
   serverApi: ServerApiVersion.v1,
 });
 
+const verifyJWT = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res
+      .status(401)
+      .send({ success: false, message: "Unauthorized access" });
+  }
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, decoded) {
+    if (err) {
+      return res
+        .status(403)
+        .send({ success: false, message: "Forbidden access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
+
 async function run() {
   try {
     await client.connect();
     const taskCollection = client.db("taskList").collection("task");
+    const userCollection = client.db("taskList").collection("user");
     console.log("DB Connected");
+
+    //*--------------User---------------*//
+
+    // PUT user
+    app.put("/user/:email", async (req, res) => {
+      const email = req.params.email;
+      const user = req.body;
+      const filter = { email: email };
+      const options = { upsert: true };
+      const updateDoc = {
+        $set: user,
+      };
+      const result = await userCollection.updateOne(filter, updateDoc, options);
+      const token = jwt.sign(
+        { email: email },
+        process.env.ACCESS_TOKEN_SECRET,
+        { expiresIn: "1d" }
+      );
+      res.send({ result, accessToken: token });
+    });
 
     //*--------------Task---------------*//
 
     // GET post by email
-    app.get("/task", async (req, res) => {
-      // const filter = req.params.email;
-      const result = await taskCollection.find({}).toArray();
-      res.send(result);
+    app.get("/task/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+      const decodedEmail = req.decoded.email;
+      if (email === decodedEmail) {
+        const filter = { user: email };
+        const result = await taskCollection.find(filter).toArray();
+        res.send(result);
+      } else {
+        return res
+          .status(403)
+          .send({ success: false, message: "Forbidden access" });
+      }
     });
 
-    // POST task by email
-    app.post("/task", async (req, res) => {
+    // POST task by user: email
+    app.post("/task", verifyJWT, async (req, res) => {
       const task = req.body;
       const result = await taskCollection.insertOne(task);
       res.send(result);
     });
 
     // DELETE Task by id
-    app.delete("/task/:id", async (req, res) => {
+    app.delete("/task/:id", verifyJWT, async (req, res) => {
       const id = req.params.id;
       const filter = { _id: ObjectId(id) };
-      console.log(filter);
       const result = await taskCollection.deleteOne(filter);
       res.send(result);
     });
 
-    app.put("/task/complete/:id", async (req, res) => {
+    app.put("/task/complete/:id", verifyJWT, async (req, res) => {
       const id = req.params.id;
       const filter = { _id: ObjectId(id) };
       const updateDoc = {
